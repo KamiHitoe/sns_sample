@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}FLASK SNS{% endblock %}</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+    <link rel="stylesheet" href="{{url_for('static', filename='css/style.css')}}">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <a class="navbar-brand" href="{{url_for('app.home')}}">
+            ホーム
+        </a>
+        {% if current_user.is_authenticated %}
+        <a class="navbar-brand" href="{{url_for('app.logout')}}">
+            ログアウト
+        </a>
+        <a class="navbar-brand" href="{{url_for('app.user')}}">
+            ユーザ情報編集画面
+        </a>
+        {% else %}
+        <a class="navbar-brand" href="{{url_for('app.login')}}">
+            ログイン
+        </a>
+        <a class="navbar-brand" href="{{url_for('app.register')}}">
+            登録
+        </a>
+        {% endif %}
+    </nav>
+    <div class="container">
+        {% block content %}
+        {% endblock %}
+    </div>
+</body>
+
+</html>
