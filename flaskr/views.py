@@ -195,6 +195,29 @@ def connect_user():
     next_url = session.pop('url', 'app:home')
     return redirect(url_for(next_url))
 
+@bp.route('/delete_connect', methods=['POST'])
+@login_required
+def delete_connect():
+    """ UserConnectから対応レコードを削除 """
+    form = ConnectForm(request.form)
+    if request.method == 'POST':
+        if form.connect_condition.data == 'delete':
+            delete_connect = UserConnect.select_by_from_user_id(form.to_user_id.data)
+            if delete_connect:
+                with db.session.begin(subtransactions=True):
+                    db.session.delete(delete_connect)
+                db.session.commit()
+            else:
+                delete_connect = UserConnect.select_by_to_user_id(form.to_user_id.data)
+                if delete_connect:
+                    with db.session.begin(subtransactions=True):
+                        db.session.delete(delete_connect)
+                    db.session.commit()
+    # user_searchから取得したsessionを利用する
+    next_url = session.pop('url', 'app:home')
+    return redirect(url_for(next_url))
+
+
 
 
 # エラーハンドリング
