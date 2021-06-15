@@ -4,6 +4,8 @@
 from flaskr import db, login_manager
 from flask_bcrypt import generate_password_hash, check_password_hash
 from flask_login import UserMixin, current_user
+from sqlalchemy.orm import aliased
+from sqlalchemy import and_, or_
 
 from datetime import datetime, timedelta
 from uuid import uuid4 # passwordを発行する時に便利
@@ -54,16 +56,32 @@ class User(UserMixin, db.Model):
     def select_user_by_id(cls, id):
         return cls.query.get(id)
 
+    # UserConnectとouter joinで紐づける
     @classmethod
     def search_by_name(cls, username):
+        """ ユーザをusernameで検索して、ユーザ情報と友達関係を取得する """
+        # from_user_id = 検索相手のID, to_user_id = ログインユーザのID, UserConnectに紐づけ
+        user_connect1 = aliased(UserConnect)
+        # from_user_id = ログインユーザのID, to_user_id = 検索相手のID, UserConnectに紐づけ
+        user_connect2 = aliased(UserConnect)
         return cls.query.filter(
-            cls.username.like(f'%{username}%'),
-            cls.id != int(current_user.get_id()),
-            cls.is_active == True
+            cls.username.like(f'%{username}%'), # クエリ = username
+            cls.id != int(current_user.get_id()), # 自分は対象外とする条件
+            cls.is_active == True # 存在している条件
+            ).outerjoin(
+                user_connect1, 
+                and_(user_connect1.from_user_id == cls.id, # 検索相手
+                user_connect1.to_user_id == current_user.get_id()) # ログインユーザ
+            ).outerjoin(
+                user_connect2,
+                and_(user_connect2.from_user_id == current_user.get_id(),
+                user_connect2.to_user_id == cls.id)
             ).with_entities(
                 # クエリを送るカラムを絞る
-                cls.id, cls.username, cls.picture_path
-            ).all()
+                cls.id, cls.username, cls.picture_path,
+                user_connect1.status.label('joined_status_to_from'), # 相手→自分
+                user_connect2.status.label('joined_status_from_to') # 自分→相手
+            ).all() # 全てだが、一意なのでfirst()でも同じそう
 
 class PasswordResetToken(db.Model):
     __tablename__ = 'password_reset_tokens'
@@ -103,5 +121,33 @@ class PasswordResetToken(db.Model):
         )
         db.session.add(new_token)
         return token
+
+class UserConnect(db.Model):
+    __tablename__ = 'user_connects'
+    id = db.Column(db.Integer, primary_key=True)
+    from_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    to_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    # 1 = 申請中, 2 = 承認済
+    status = db.Column(db.Integer, unique=False, default=1)
+    create_at = db.Column(db.DateTime, default=datetime.now)
+    update_at = db.Column(db.DateTime, default=datetime.now)
+
+    def __init__(self, from_user_id, to_user_id):
+        self.from_user_id = from_user_id
+        self.to_user_id = to_user_id
+
+    def create_new_connect(self):
+        db.session.add(self)
+
+    @classmethod
+    def select_by_from_user_id(cls, from_user_id):
+        return cls.query.filter_by(
+            from_user_id = from_user_id, 
+            to_user_id = current_user.get_id()
+        ).first()
+
+    def update_status(self):
+        self.status = 2
+        self.update_at = datetime.now()
 
 

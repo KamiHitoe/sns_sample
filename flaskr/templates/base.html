@@ -19,6 +19,9 @@
         <a class="navbar-brand" href="{{url_for('app.user')}}">
             ユーザ情報編集画面
         </a>
+        <a class="navbar-brand" href="{{url_for('app.user_search')}}">
+            ユーザ検索画面
+        </a>
         {% else %}
         <a class="navbar-brand" href="{{url_for('app.login')}}">
             ログイン
