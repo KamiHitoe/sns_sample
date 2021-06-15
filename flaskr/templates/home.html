@@ -18,9 +18,8 @@ Home - {{super()}}
         <p>ログインしてくださいな</p>
     {% endif %}
     </div>
-
+    <!-- 友達一覧表示 -->
     <div class="col-lg-12">
-        {% if friends %}
         <table class="table">
             <!-- テーブルのヘッダー -->
             <thead>
@@ -31,6 +30,7 @@ Home - {{super()}}
                 </tr>
             </thead>
             <!-- テーブルのボディ -->
+            {% if friends %}
             <tbody>
                 {% for friend in friends %}
                 <tr>
@@ -43,6 +43,48 @@ Home - {{super()}}
                     <th></th>
                     {% endif %}
                     <th>{{friend.username}}</th>
+                </tr>
+                {% endfor %}
+                
+            </tbody>
+            {% endif %}
+        </table>
+    </div>
+    <!-- 非承認待ち一覧表示 -->
+    <div class="col-lg-12">
+        {% if requested_friends %}
+        <table class="table">
+            <!-- テーブルのヘッダー -->
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>承認リクエストユーザ画像</th>
+                    <th>承認リクエストユーザ</th>
+                    <th>承認ボタン</th>
+                </tr>
+            </thead>
+            <!-- テーブルのボディ -->
+            <tbody>
+                {% for requested_friend in requested_friends %}
+                <tr>
+                    <th>{{loop.index}}</th>
+                    {% if requested_friend.picture_path %}
+                    <th>
+                        <img class="user-image-small" src="{{url_for('static', filename=requested_friend.picture_path)}}">
+                    </th>
+                    {% else %}
+                    <th></th>
+                    {% endif %}
+                    <th>{{requested_friend.username}}</th>
+                    <th>
+                        <form method="POST" action="{{url_for('app.connect_user')}}">
+                        <!-- forms.pyから取得せず、ただviews.pyに変数を返すだけのフォーム -->
+                        {{connect_form.csrf_token}}
+                        {{connect_form.connect_condition(value='accept')}}
+                        {{connect_form.to_user_id(value=requested_friend.id)}}
+                        {{connect_form.submit(class='btn btn-primary', value='友達申請を承認')}}
+                        </form>
+                    </th>
                 </tr>
                 {% endfor %}
                 
