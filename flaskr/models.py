@@ -174,6 +174,13 @@ class UserConnect(db.Model):
         ).first()
 
     @classmethod
+    def select_by_to_user_id(cls, to_user_id):
+        return cls.query.filter_by(
+            from_user_id = current_user.get_id(), 
+            to_user_id = to_user_id
+        ).first()
+
+    @classmethod
     def find_friends_requested(cls, to_user_id):
         """ 非承認待ちのUserConnectインスタンス群を返す """
         return cls.query.filter(
