@@ -18,9 +18,10 @@ bp = Blueprint('app', __name__, url_prefix='')
 
 @bp.route('/')
 def home():
+    """ 友達一覧表示 """
     user_id = current_user.get_id()
     user_add_friends_id = User.find_friends_id(user_id)
-    # 現状、取得できるインスタンスが単数だからダメ
+    # ログインユーザ空間から検索ユーザ空間に写像するためにlistの変換が必要
     friends_id_list = []
     for user_friend_id in user_add_friends_id:
         if user_friend_id.friends_to_from:
@@ -30,7 +31,19 @@ def home():
     friends = []
     for friends_id in friends_id_list:
         friends.append(User.select_user_by_id(friends_id))
-    return render_template('home.html', friends=friends)
+
+    """ 友達非承認待ち """
+    requested_friends_records = UserConnect.find_friends_requested(user_id)
+    requested_friends_records_list = []
+    for requested_friend_record in requested_friends_records:
+        requested_friends_records_list.append(requested_friend_record.from_user_id)
+    requested_friends = []
+    for requested_friend_id in requested_friends_records_list:
+        requested_friends.append(User.select_user_by_id(requested_friend_id))
+
+    connect_form = ConnectForm()
+    session['url'] = 'app.home'
+    return render_template('home.html', friends=friends, requested_friends=requested_friends, connect_form=connect_form)
 
 @bp.route('/logout')
 def logout():
