@@ -18,6 +18,39 @@ Home - {{super()}}
         <p>ログインしてくださいな</p>
     {% endif %}
     </div>
+
+    <div class="col-lg-12">
+        {% if friends %}
+        <table class="table">
+            <!-- テーブルのヘッダー -->
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>友達画像</th>
+                    <th>友達の名前</th>
+                </tr>
+            </thead>
+            <!-- テーブルのボディ -->
+            <tbody>
+                {% for friend in friends %}
+                <tr>
+                    <th>{{loop.index}}</th>
+                    {% if friend.picture_path %}
+                    <th>
+                        <img class="user-image-small" src="{{url_for('static', filename=friend.picture_path)}}">
+                    </th>
+                    {% else %}
+                    <th></th>
+                    {% endif %}
+                    <th>{{friend.username}}</th>
+                </tr>
+                {% endfor %}
+                
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+
 </div>
 {% endblock %}
 

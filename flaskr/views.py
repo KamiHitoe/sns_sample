@@ -18,7 +18,19 @@ bp = Blueprint('app', __name__, url_prefix='')
 
 @bp.route('/')
 def home():
-    return render_template('home.html')
+    user_id = current_user.get_id()
+    user_add_friends_id = User.find_friends_id(user_id)
+    # 現状、取得できるインスタンスが単数だからダメ
+    friends_id_list = []
+    for user_friend_id in user_add_friends_id:
+        if user_friend_id.friends_to_from:
+            friends_id_list.append(user_friend_id.friends_to_from)
+        if user_friend_id.friends_from_to:
+            friends_id_list.append(user_friend_id.friends_from_to)
+    friends = []
+    for friends_id in friends_id_list:
+        friends.append(User.select_user_by_id(friends_id))
+    return render_template('home.html', friends=friends)
 
 @bp.route('/logout')
 def logout():

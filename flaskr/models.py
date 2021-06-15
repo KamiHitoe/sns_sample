@@ -56,10 +56,10 @@ class User(UserMixin, db.Model):
     def select_user_by_id(cls, id):
         return cls.query.get(id)
 
-    # UserConnectとouter joinで紐づける
     @classmethod
     def search_by_name(cls, username):
-        """ ユーザをusernameで検索して、ユーザ情報と友達関係を取得する """
+        """ ユーザをusernameで検索して、UserConnectとouter joinで紐づけた後に
+        ユーザ情報と友達関係を取得する """
         # from_user_id = 検索相手のID, to_user_id = ログインユーザのID, UserConnectに紐づけ
         user_connect1 = aliased(UserConnect)
         # from_user_id = ログインユーザのID, to_user_id = 検索相手のID, UserConnectに紐づけ
@@ -82,6 +82,28 @@ class User(UserMixin, db.Model):
                 user_connect1.status.label('joined_status_to_from'), # 相手→自分
                 user_connect2.status.label('joined_status_from_to') # 自分→相手
             ).all() # 全てだが、一意なのでfirst()でも同じそう
+
+    @classmethod
+    def find_friends_id(cls, id):
+        """ ログインユーザと友達関係になってるUserインスタンスを取得 """
+        friends_connect1 = aliased(UserConnect)
+        friends_connect2 = aliased(UserConnect)
+        return cls.query.filter_by(
+            id=id
+            ).outerjoin(
+                friends_connect1,
+                and_(friends_connect1.from_user_id == cls.id,
+                friends_connect1.status == 2)
+            ).outerjoin(
+                friends_connect2,
+                and_(friends_connect2.to_user_id == cls.id,
+                friends_connect2.status == 2)
+            ).with_entities(
+                # クエリを送るカラムを絞る
+                cls.id, cls.username, cls.picture_path,
+                friends_connect1.to_user_id.label('friends_to_from'),
+                friends_connect2.from_user_id.label('friends_from_to'),
+            ).all()
 
 class PasswordResetToken(db.Model):
     __tablename__ = 'password_reset_tokens'
