@@ -16,88 +16,91 @@ Home - {{super()}}
         <p>メールアドレス：{{current_user.email}}</p>
         <!-- 友達一覧表示 -->
         <div class="col-lg-12">
-        <table class="table">
-            <!-- テーブルのヘッダー -->
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>友達画像</th>
-                    <th>友達の名前</th>
-                    <th>友達解消ボタン</th>
-                </tr>
-            </thead>
-            <!-- テーブルのボディ -->
-            {% if friends %}
-            <tbody>
-                {% for friend in friends %}
-                <tr>
-                    <th>{{loop.index}}</th>
-                    {% if friend.picture_path %}
-                    <th>
-                        <img class="user-image-small" src="{{url_for('static', filename=friend.picture_path)}}">
-                    </th>
-                    {% else %}
-                    <th></th>
-                    {% endif %}
-                    <th>{{friend.username}}</th>
-                    <th>
-                        <form method="POST" action="{{url_for('app.delete_connect')}}">
-                            {{connect_form.csrf_token}}
-                            {{connect_form.connect_condition(value='delete')}}
-                            {{connect_form.to_user_id(value=friend.id)}}
-                            {{connect_form.submit(class='btn btn-primary', value='友達を解消する')}}
-                        </form>
-                    </th>
-                </tr>
-                {% endfor %}
-                
-            </tbody>
+            <h2>友達一覧</h2>
+            <table class="table table-bordered">
+                <!-- テーブルのヘッダー -->
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>友達画像</th>
+                        <th>友達の名前</th>
+                        <th>メッセージ</th>
+                        <th>友達解消ボタン</th>
+                    </tr>
+                </thead>
+                <!-- テーブルのボディ -->
+                {% if friends %}
+                <tbody>
+                    {% for friend in friends %}
+                    <tr>
+                        <td>{{loop.index}}</td>
+                        {% if friend.picture_path %}
+                        <td>
+                            <img class="user-image-small" src="{{url_for('static', filename=friend.picture_path)}}">
+                        </td>
+                        {% else %}
+                        <td></td>
+                        {% endif %}
+                        <td>{{friend.username}}</td>
+                        <td><a href="{{url_for('app.message', id=friend.id)}}" class="btn btn-link">メッセージを送る</a></td>
+                        <td>
+                            <form method="POST" action="{{url_for('app.delete_connect')}}">
+                                {{connect_form.csrf_token}}
+                                {{connect_form.connect_condition(value='delete')}}
+                                {{connect_form.to_user_id(value=friend.id)}}
+                                {{connect_form.submit(class='btn btn-primary', value='友達を解消する')}}
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    
+                </tbody>
+                {% endif %}
+            </table>
+        </div>
+        <!-- 非承認待ち一覧表示 -->
+        <div class="col-lg-12">
+            {% if requested_friends %}
+            <table class="table table-bordered">
+                <!-- テーブルのヘッダー -->
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>承認リクエストユーザ画像</th>
+                        <th>承認リクエストユーザ</th>
+                        <th>承認ボタン</th>
+                    </tr>
+                </thead>
+                <!-- テーブルのボディ -->
+                <tbody>
+                    {% for requested_friend in requested_friends %}
+                    <tr>
+                        <td>{{loop.index}}</td>
+                        {% if requested_friend.picture_path %}
+                        <td>
+                            <img class="user-image-small" src="{{url_for('static', filename=requested_friend.picture_path)}}">
+                        </td>
+                        {% else %}
+                        <td></td>
+                        {% endif %}
+                        <td>{{requested_friend.username}}</td>
+                        <td>
+                            <form method="POST" action="{{url_for('app.connect_user')}}">
+                                <!-- forms.pyから取得せず、ただviews.pyに変数を返すだけのフォーム -->
+                                {{connect_form.csrf_token}}
+                                {{connect_form.connect_condition(value='accept')}}
+                                {{connect_form.to_user_id(value=requested_friend.id)}}
+                                {{connect_form.submit(class='btn btn-primary', value='友達申請を承認')}}
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    
+                </tbody>
+            </table>
             {% endif %}
-        </table>
-    </div>
-    <!-- 非承認待ち一覧表示 -->
-    <div class="col-lg-12">
-        {% if requested_friends %}
-        <table class="table">
-            <!-- テーブルのヘッダー -->
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>承認リクエストユーザ画像</th>
-                    <th>承認リクエストユーザ</th>
-                    <th>承認ボタン</th>
-                </tr>
-            </thead>
-            <!-- テーブルのボディ -->
-            <tbody>
-                {% for requested_friend in requested_friends %}
-                <tr>
-                    <th>{{loop.index}}</th>
-                    {% if requested_friend.picture_path %}
-                    <th>
-                        <img class="user-image-small" src="{{url_for('static', filename=requested_friend.picture_path)}}">
-                    </th>
-                    {% else %}
-                    <th></th>
-                    {% endif %}
-                    <th>{{requested_friend.username}}</th>
-                    <th>
-                        <form method="POST" action="{{url_for('app.connect_user')}}">
-                            <!-- forms.pyから取得せず、ただviews.pyに変数を返すだけのフォーム -->
-                            {{connect_form.csrf_token}}
-                            {{connect_form.connect_condition(value='accept')}}
-                            {{connect_form.to_user_id(value=requested_friend.id)}}
-                            {{connect_form.submit(class='btn btn-primary', value='友達申請を承認')}}
-                        </form>
-                    </th>
-                </tr>
-                {% endfor %}
-                
-            </tbody>
-        </table>
-        {% endif %}
-    </div>
-    
+        </div>
+
     {% else %}
         <p>ログインしてくださいな</p>
     {% endif %}

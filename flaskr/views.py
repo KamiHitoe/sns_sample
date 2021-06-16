@@ -5,46 +5,63 @@ from flask import (
     redirect, url_for, flash, session, 
 )
 from flask_login import login_user, logout_user, login_required, current_user
-from flaskr.models import User, PasswordResetToken, UserConnect
+from flaskr.models import User, PasswordResetToken, UserConnect, Message
 from flaskr import db
 from flaskr.forms import (
     LoginForm, RegisterForm, ResetPasswordForm, ForgotPasswordForm,
-    UserForm, ChangePasswordForm, UserSearchForm, ConnectForm, 
+    UserForm, ChangePasswordForm, UserSearchForm, ConnectForm, MessageForm,
+
 )
 from os import path
 
 # メソッドの前にappを付ける必要がでてくる
 bp = Blueprint('app', __name__, url_prefix='')
 
+# @bp.route('/')
+# def home():
+#     """ 友達一覧表示 """
+#     user_id = current_user.get_id()
+#     user_friends_id_to_from, user_friends_id_from_to = User.find_friends_id(user_id)
+#     # ログインユーザ空間から検索ユーザ空間に写像するためにlistの変換が必要
+#     friends_id_list = []
+#     for user_friend_id in user_friends_id_to_from:
+#         if user_friend_id.friends_to_from:
+#             friends_id_list.append(user_friend_id.friends_to_from)
+#     for user_friend_id in user_friends_id_from_to:
+#         if user_friend_id.friends_from_to:
+#             friends_id_list.append(user_friend_id.friends_from_to)
+#     friends = []
+#     for friends_id in friends_id_list:
+#         friends.append(User.select_user_by_id(friends_id))
+
+#     """ 友達非承認待ち """
+#     requested_friends_records = UserConnect.find_friends_requested(user_id)
+#     requested_friends_records_list = []
+#     for requested_friend_record in requested_friends_records:
+#         requested_friends_records_list.append(requested_friend_record.from_user_id)
+#     requested_friends = []
+#     for requested_friend_id in requested_friends_records_list:
+#         requested_friends.append(User.select_user_by_id(requested_friend_id))
+
+#     connect_form = ConnectForm()
+#     session['url'] = 'app.home'
+#     return render_template('home.html', friends=friends, requested_friends=requested_friends, connect_form=connect_form)
+
 @bp.route('/')
 def home():
-    """ 友達一覧表示 """
-    user_id = current_user.get_id()
-    user_friends_id_to_from, user_friends_id_from_to = User.find_friends_id(user_id)
-    # ログインユーザ空間から検索ユーザ空間に写像するためにlistの変換が必要
-    friends_id_list = []
-    for user_friend_id in user_friends_id_to_from:
-        if user_friend_id.friends_to_from:
-            friends_id_list.append(user_friend_id.friends_to_from)
-    for user_friend_id in user_friends_id_from_to:
-        if user_friend_id.friends_from_to:
-            friends_id_list.append(user_friend_id.friends_from_to)
-    friends = []
-    for friends_id in friends_id_list:
-        friends.append(User.select_user_by_id(friends_id))
-
-    """ 友達非承認待ち """
-    requested_friends_records = UserConnect.find_friends_requested(user_id)
-    requested_friends_records_list = []
-    for requested_friend_record in requested_friends_records:
-        requested_friends_records_list.append(requested_friend_record.from_user_id)
-    requested_friends = []
-    for requested_friend_id in requested_friends_records_list:
-        requested_friends.append(User.select_user_by_id(requested_friend_id))
-
+    friends = requested_friends = requesting_friends = None
     connect_form = ConnectForm()
     session['url'] = 'app.home'
-    return render_template('home.html', friends=friends, requested_friends=requested_friends, connect_form=connect_form)
+    if current_user.is_authenticated:
+        friends = User.select_friends()
+        requested_friends = User.select_requested_friends()
+        requesting_friends = User.select_requesting_friends()
+    return render_template(
+        'home.html',
+        friends=friends, requested_friends=requested_friends, requesting_friends=requesting_friends,
+        connect_form=connect_form
+    )
+
 
 @bp.route('/logout')
 def logout():
@@ -216,6 +233,34 @@ def delete_connect():
     # user_searchから取得したsessionを利用する
     next_url = session.pop('url', 'app:home')
     return redirect(url_for(next_url))
+
+@bp.route('/message/<id>', methods=['GET', 'POST'])
+@login_required
+def message(id):
+    if not UserConnect.is_friend(id):
+        """ Falseであればリダイレクト """
+        return redirect(url_for('app.home'))
+    form = MessageForm(request.form)
+    messages = Message.get_friend_messages(current_user.get_id(), id)
+    user = User.select_user_by_id(id)
+    # 未読の相手のメッセージを取り出す
+    read_message_ids = [message.id for message in messages if (not message.is_read) and (message.from_user_id == int(id))]
+    if read_message_ids:
+        with db.session.begin(subtransactions=True):
+            """ 相手のメッセージのis_readフラグを1にしてDBに格納 """
+            Message.update_is_read_by_ids(read_message_ids)
+        db.session.commit()
+    if request.method == 'POST' and form.validate():
+        new_message = Message(current_user.get_id(), id, form.message.data)
+        with db.session.begin(subtransactions=True):
+            new_message.create_message()
+        db.session.commit()
+        return redirect(url_for('app.message', id=id))
+    return render_template('message.html', 
+        form=form, messages=messages, to_user_id=id, user=user)
+
+
+
 
 
 

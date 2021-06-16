@@ -9,4 +9,55 @@
     height: 100px;
 }
 
+.user-image-mini{
+    width: 50px;
+    height: 50px;
+}
+
+.speech-bubble-self {
+	position: relative;
+	background: #dedede;
+	border-radius: .4em;
+    margin-bottom: 20px;
+}
+
+.speech-bubble:after {
+	content: '';
+	position: absolute;
+	right: 0;
+	top: 50%;
+	width: 0;
+	height: 0;
+	border: 20px solid transparent;
+	border-left-color: #dedede;
+	border-right: 0;
+	border-bottom: 0;
+	margin-top: -10px;
+	margin-right: -20px;
+}
+
+.speech-bubble-dest {
+	position: relative;
+	background: #05c4d6;
+	border-radius: .4em;
+    margin-bottom: 20px;
+
+}
+
+.speech-bubble:after {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 50%;
+	width: 0;
+	height: 0;
+	border: 20px solid transparent;
+	border-right-color: #05c4d6;
+	border-left: 0;
+	border-bottom: 0;
+	margin-top: -10px;
+	margin-left: -20px;
+}
+
+
 
