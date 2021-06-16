@@ -1,0 +1,64 @@
+{% from "_formhelpers.html" import render_field %}
+{% extends "base.html" %}
+{% block title %}
+メッセージ画面 - {{super()}}
+{% endblock %}
+{% block content %}
+<!-- BootstrapのGridSystemは横幅合計を12にする必要がある -->
+    {% for message in messages %}
+    <div class="row">
+        {% if message.from_user_id == current_user.id %}
+        <!-- 自分側 -->
+        <div class="col-md-2">
+            {% if current_user.picture_path %}
+            <img class="user-image-mini" src="{{url_for('static', filename=current_user.picture_path)}}">
+            {% endif %}
+            <p>{{current_user.username}}</p>
+        </div>
+        <div class="speech-bubble-self col-md-4">
+            {% for splitted_message in message.message | replace_newline %}
+            <p>{{splitted_message | urlize(target=true)}}</p>
+            {% endfor %}
+            <p>{{message.create_at.strftime("%H:%M")}}</p>
+        </div>
+        <div class="col-md-2">
+            {% if message.is_read %}
+            <p>既読</p>
+            {% endif %}
+        </div>
+        <div class="col-md-4"></div>
+        {% else %}
+        <!-- 相手側 -->
+        <div class="col-md-6"></div>
+        <div class="speech-bubble-dest col-md-4">
+            {% for splitted_message in message.message | replace_newline %}
+            <p>{{splitted_message | urlize(target=true)}}</p>
+            {% endfor %}
+            <p>{{message.create_at.strftime("%H:%M")}}</p>
+        </div>
+        <div class="col-md-2">
+            {% if user.picture_path %}
+            <img class="user-image-mini" src="{{url_for('static', filename=user.picture_path)}}">
+            {% endif %}
+            <p>{{user.username}}</p>
+        </div>
+        {% endif %}
+        <br>
+        <hr>
+    </div>
+    {% endfor %}
+
+    <div class="row">
+        <div class="col-md-4">
+            <form method="POST">
+                {{form.csrf_token}}
+                {{form.to_user_id(value=to_user_id)}}
+                {{render_field(form.message, cols="50", rows="5")}}
+                {{form.submit()}}
+            </form>
+        </div>
+    </div>
+
+
+
+{% endblock %}

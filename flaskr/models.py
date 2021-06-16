@@ -84,33 +84,80 @@ class User(UserMixin, db.Model):
             ).all() # 全てだが、一意なのでfirst()でも同じそう
 
     @classmethod
-    def find_friends_id(cls, user_id):
-        """ ログインユーザと友達関係になってるUserインスタンスを取得
-        二回外部結合しちゃうと組み合わせが二乗になるため一回ずつに制限 """
-        friends_connect1 = aliased(UserConnect)
-        friends_connect2 = aliased(UserConnect)
-        # toとfromで2回クエリを投げるせいで遅い
-        return cls.query.filter_by( # filter=WHERE句でないと結合できないので注意
-            id=user_id
-            ).outerjoin(
-                friends_connect1,
-                and_(friends_connect1.from_user_id == cls.id,
-                friends_connect1.status == 2)
-            ).with_entities(
-                # クエリを送るカラムを絞る
-                cls.id, cls.username, cls.picture_path,
-                friends_connect1.to_user_id.label('friends_to_from'), # 自分→相手
-            ).all(), cls.query.filter_by( # filter=WHERE句でないと結合できないので注意
-            id=user_id
-            ).outerjoin(
-                friends_connect2,
-                and_(friends_connect2.to_user_id == cls.id,
-                friends_connect2.status == 2)
-            ).with_entities(
-                # クエリを送るカラムを絞る
-                cls.id, cls.username, cls.picture_path,
-                friends_connect2.from_user_id.label('friends_from_to'), # 相手→自分
-            ).all()
+    def select_friends(cls):
+        """ UserConnectと結合させてからtoとfromの和集合を取る """
+        return cls.query.join(
+            UserConnect,
+            or_(
+                and_(
+                    UserConnect.to_user_id == cls.id,
+                    UserConnect.from_user_id == current_user.get_id(),
+                    UserConnect.status == 2
+                ),
+                and_(
+                    UserConnect.from_user_id == cls.id,
+                    UserConnect.to_user_id == current_user.get_id(),
+                    UserConnect.status == 2
+                )
+            )
+        ).with_entities(
+            cls.id, cls.username, cls.picture_path
+        ).all()
+
+    @classmethod
+    def select_requested_friends(cls):
+        return cls.query.join(
+            UserConnect,
+            and_(
+                UserConnect.from_user_id == cls.id,
+                UserConnect.to_user_id == current_user.get_id(),
+                UserConnect.status == 1
+            )
+        ).with_entities(
+            cls.id, cls.username, cls.picture_path
+        ).all()
+
+    @classmethod
+    def select_requesting_friends(cls):
+        return cls.query.join(
+            UserConnect,
+            and_(
+                UserConnect.from_user_id == current_user.get_id(),
+                UserConnect.to_user_id == cls.id,
+                UserConnect.status == 1
+            )
+        ).with_entities(
+            cls.id, cls.username, cls.picture_path
+        ).all()
+
+    # @classmethod
+    # def find_friends_id(cls, user_id):
+    #     """ ログインユーザと友達関係になってるUserインスタンスを取得
+    #     二回外部結合しちゃうと組み合わせが二乗になるため一回ずつに制限 """
+    #     friends_connect1 = aliased(UserConnect)
+    #     friends_connect2 = aliased(UserConnect)
+    #     # toとfromで2回クエリを投げるせいで遅い
+    #     return cls.query.filter_by( # filter=WHERE句でないと結合できないので注意
+    #         id=user_id
+    #         ).outerjoin(
+    #             friends_connect1,
+    #             and_(friends_connect1.from_user_id == cls.id,
+    #             friends_connect1.status == 2)
+    #         ).with_entities(
+    #             # クエリを送るカラムを絞る
+    #             cls.id, cls.username, cls.picture_path,
+    #             friends_connect1.to_user_id.label('friends_to_from'), # 自分→相手
+    #         ).all(), cls.query.filter_by( # filter=WHERE句でないと結合できないので注意
+    #         id=user_id
+    #         ).outerjoin(
+    #             friends_connect2,
+    #             and_(friends_connect2.to_user_id == cls.id,
+    #             friends_connect2.status == 2)
+    #         ).with_entities(
+    #             # クエリを送るカラムを絞る
+    #             cls.id, cls.username, cls.picture_path,
+    #             friends_connect2.from_user_id.label('friends_from_to'), # 相手→自分
+    #         ).all()
 
 class PasswordResetToken(db.Model):
     __tablename__ = 'password_reset_tokens'
@@ -194,4 +241,65 @@ class UserConnect(db.Model):
             cls.to_user_id == to_user_id,
             cls.status == 1,
         ).all()
+
+    @classmethod
+    def is_friend(cls, to_user_id):
+        user = cls.query.filter(
+            or_(
+                and_(
+                    UserConnect.from_user_id == current_user.get_id(),
+                    UserConnect.to_user_id == to_user_id,
+                    UserConnect.status == 2
+                ),
+                and_(
+                    UserConnect.from_user_id == to_user_id,
+                    UserConnect.to_user_id == current_user.get_id(),
+                    UserConnect.status == 2
+                ),
+            )
+        ).first()
+        return True if user else False
+
+
+class Message(db.Model):
+    __tablename__ = 'messages'
+    id = db.Column(db.Integer, primary_key=True)
+    from_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    to_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    is_read = db.Column(db.Boolean, default=False)
+    message = db.Column(db.Text)
+    create_at = db.Column(db.DateTime, default=datetime.now())
+    update_at = db.Column(db.DateTime, default=datetime.now())
+
+    def __init__(self, from_user_id, to_user_id, message):
+        self.from_user_id = from_user_id
+        self.to_user_id = to_user_id
+        self.message = message
+
+    def create_message(self):
+        db.session.add(self)
+    
+    @classmethod
+    def get_friend_messages(cls, id1, id2):
+        return cls.query.filter(
+            or_(
+                and_(
+                    cls.from_user_id == id1,
+                    cls.to_user_id == id2,
+                ),
+                and_(
+                    cls.from_user_id == id2,
+                    cls.to_user_id == id1,
+                )
+            )
+        ).order_by(cls.id).all() # 新着順に並び替える
+
+    @classmethod
+    def update_is_read_by_ids(cls, ids):
+        cls.query.filter(cls.id.in_(ids)).update( # inと同じ構文
+            {'is_read': 1},
+            synchronize_session='fetch'
+        )
+
+
 
