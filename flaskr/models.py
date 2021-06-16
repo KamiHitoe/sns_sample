@@ -85,15 +85,23 @@ class User(UserMixin, db.Model):
 
     @classmethod
     def find_friends_id(cls, user_id):
-        """ ログインユーザと友達関係になってるUserインスタンスを取得 """
+        """ ログインユーザと友達関係になってるUserインスタンスを取得
+        二回外部結合しちゃうと組み合わせが二乗になるため一回ずつに制限 """
         friends_connect1 = aliased(UserConnect)
         friends_connect2 = aliased(UserConnect)
+        # toとfromで2回クエリを投げるせいで遅い
         return cls.query.filter_by( # filter=WHERE句でないと結合できないので注意
             id=user_id
             ).outerjoin(
                 friends_connect1,
                 and_(friends_connect1.from_user_id == cls.id,
                 friends_connect1.status == 2)
+            ).with_entities(
+                # クエリを送るカラムを絞る
+                cls.id, cls.username, cls.picture_path,
+                friends_connect1.to_user_id.label('friends_to_from'), # 自分→相手
+            ).all(), cls.query.filter_by( # filter=WHERE句でないと結合できないので注意
+            id=user_id
             ).outerjoin(
                 friends_connect2,
                 and_(friends_connect2.to_user_id == cls.id,
@@ -101,7 +109,6 @@ class User(UserMixin, db.Model):
             ).with_entities(
                 # クエリを送るカラムを絞る
                 cls.id, cls.username, cls.picture_path,
-                friends_connect1.to_user_id.label('friends_to_from'), # 自分→相手
                 friends_connect2.from_user_id.label('friends_from_to'), # 相手→自分
             ).all()
 
