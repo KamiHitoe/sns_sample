@@ -20,12 +20,13 @@ bp = Blueprint('app', __name__, url_prefix='')
 def home():
     """ 友達一覧表示 """
     user_id = current_user.get_id()
-    user_add_friends_id = User.find_friends_id(user_id)
+    user_friends_id_to_from, user_friends_id_from_to = User.find_friends_id(user_id)
     # ログインユーザ空間から検索ユーザ空間に写像するためにlistの変換が必要
     friends_id_list = []
-    for user_friend_id in user_add_friends_id:
+    for user_friend_id in user_friends_id_to_from:
         if user_friend_id.friends_to_from:
             friends_id_list.append(user_friend_id.friends_to_from)
+    for user_friend_id in user_friends_id_from_to:
         if user_friend_id.friends_from_to:
             friends_id_list.append(user_friend_id.friends_from_to)
     friends = []
@@ -202,17 +203,16 @@ def delete_connect():
     form = ConnectForm(request.form)
     if request.method == 'POST':
         if form.connect_condition.data == 'delete':
-            delete_connect = UserConnect.select_by_from_user_id(form.to_user_id.data)
-            if delete_connect:
+            if UserConnect.select_by_from_user_id(form.to_user_id.data):
+                delete_connect = UserConnect.select_by_from_user_id(form.to_user_id.data)
                 with db.session.begin(subtransactions=True):
                     db.session.delete(delete_connect)
                 db.session.commit()
-            else:
+            elif UserConnect.select_by_to_user_id(form.to_user_id.data):
                 delete_connect = UserConnect.select_by_to_user_id(form.to_user_id.data)
-                if delete_connect:
-                    with db.session.begin(subtransactions=True):
-                        db.session.delete(delete_connect)
-                    db.session.commit()
+                with db.session.begin(subtransactions=True):
+                    db.session.delete(delete_connect)
+                db.session.commit()
     # user_searchから取得したsessionを利用する
     next_url = session.pop('url', 'app:home')
     return redirect(url_for(next_url))
