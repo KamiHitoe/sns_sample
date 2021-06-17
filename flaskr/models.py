@@ -5,26 +5,28 @@ from flaskr import db, login_manager
 from flask_bcrypt import generate_password_hash, check_password_hash
 from flask_login import UserMixin, current_user
 from sqlalchemy.orm import aliased
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, desc
 
 from datetime import datetime, timedelta
-from uuid import uuid4 # passwordを発行する時に便利
+from uuid import uuid4  # passwordを発行する時に便利
+
 
 @login_manager.user_loader
 def load_user(user_id):
     """ user_idに対して、Userインスタンスを返す """
     return User.query.get(user_id)
 
+
 class User(UserMixin, db.Model):
     """ ユーザログイン機能を付加 """
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(64), index=True) # 検索性があるものはindex付けとく
+    username = db.Column(db.String(64), index=True)  # 検索性があるものはindex付けとく
     email = db.Column(db.String(64), unique=True, index=True)
     password = db.Column(
-        db.String(128),
-        default=generate_password_hash('something'),
-        ) # passwordに初期値を設ける
+                        db.String(128),
+                        default=generate_password_hash('something'),
+                        )  # passwordに初期値を設ける
     picture_path = db.Column(db.Text, nullable=True)
     # 有効か無効かのフラグ
     is_active = db.Column(db.Boolean, unique=False, default=False)
@@ -57,7 +59,7 @@ class User(UserMixin, db.Model):
         return cls.query.get(id)
 
     @classmethod
-    def search_by_name(cls, username):
+    def search_by_name(cls, username, page=1):
         """ ユーザをusernameで検索して、UserConnectとouter joinで紐づけた後に
         ユーザ情報と友達関係を取得する """
         # from_user_id = 検索相手のID, to_user_id = ログインユーザのID, UserConnectに紐づけ
@@ -81,7 +83,7 @@ class User(UserMixin, db.Model):
                 cls.id, cls.username, cls.picture_path,
                 user_connect1.status.label('joined_status_to_from'), # 相手→自分
                 user_connect2.status.label('joined_status_from_to'), # 自分→相手
-            ).all() # 全てだが、一意なのでfirst()でも同じそう
+            ).order_by(cls.username).paginate(page, 10, False)
 
     @classmethod
     def select_friends(cls):
@@ -159,6 +161,7 @@ class User(UserMixin, db.Model):
     #             friends_connect2.from_user_id.label('friends_from_to'), # 相手→自分
     #         ).all()
 
+
 class PasswordResetToken(db.Model):
     __tablename__ = 'password_reset_tokens'
     id = db.Column(db.Integer, primary_key=True)
@@ -198,6 +201,7 @@ class PasswordResetToken(db.Model):
         db.session.add(new_token)
         return token
 
+
 class UserConnect(db.Model):
     __tablename__ = 'user_connects'
     id = db.Column(db.Integer, primary_key=True)
@@ -214,7 +218,6 @@ class UserConnect(db.Model):
 
     def create_new_connect(self):
         db.session.add(self)
-
 
     def update_status(self):
         self.status = 2
@@ -267,6 +270,7 @@ class Message(db.Model):
     from_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     to_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     is_read = db.Column(db.Boolean, default=False)
+    is_checked = db.Column(db.Boolean, default=False)
     message = db.Column(db.Text)
     create_at = db.Column(db.DateTime, default=datetime.now())
     update_at = db.Column(db.DateTime, default=datetime.now())
@@ -280,7 +284,8 @@ class Message(db.Model):
         db.session.add(self)
     
     @classmethod
-    def get_friend_messages(cls, id1, id2):
+    def get_friend_messages(cls, id1, id2, offset_value=0, limit_value=5):
+        """ 降順に0件飛ばして5件メッセージデータを取得する """
         return cls.query.filter(
             or_(
                 and_(
@@ -292,14 +297,40 @@ class Message(db.Model):
                     cls.to_user_id == id1,
                 )
             )
-        ).order_by(cls.id).all() # 新着順に並び替える
+        # idを降順でソート
+        ).order_by(desc(cls.id)).offset(offset_value).limit(limit_value).all()  # 新着順に並び替える
 
     @classmethod
     def update_is_read_by_ids(cls, ids):
-        cls.query.filter(cls.id.in_(ids)).update( # inと同じ構文
+        cls.query.filter(cls.id.in_(ids)).update(  # inと同じ構文
             {'is_read': 1},
             synchronize_session='fetch'
         )
 
+    @classmethod
+    def update_is_checked_by_ids(cls, ids):
+        cls.query.filter(cls.id.in_(ids)).update(  # inと同じ構文
+            {'is_checked': 1},
+            synchronize_session='fetch'
+        )
 
+    @classmethod
+    def select_not_read_messages(cls, from_user_id, to_user_id):
+        return cls.query.filter(
+            and_(
+                cls.from_user_id == from_user_id,
+                cls.to_user_id == to_user_id,
+                cls.is_read == 0
+            )
+        ).order_by(cls.id).all()
 
+    @classmethod
+    def select_not_checked_messages(cls, from_user_id, to_user_id):
+        return cls.query.filter(
+            and_(
+                cls.from_user_id == from_user_id,
+                cls.to_user_id == to_user_id,
+                cls.is_read == 1,
+                cls.is_checked == 0
+            )
+        ).order_by(cls.id).all()

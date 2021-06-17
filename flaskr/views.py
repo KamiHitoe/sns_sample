@@ -2,7 +2,7 @@
 from datetime import datetime
 from flask import (
     Blueprint, abort, request, render_template,
-    redirect, url_for, flash, session, 
+    redirect, url_for, flash, session, jsonify, 
 )
 from flask_login import login_user, logout_user, login_required, current_user
 from flaskr.models import User, PasswordResetToken, UserConnect, Message
@@ -12,6 +12,7 @@ from flaskr.forms import (
     UserForm, ChangePasswordForm, UserSearchForm, ConnectForm, MessageForm,
 
 )
+from flaskr.utils.message_format import make_message_format, make_old_message_format
 from os import path
 
 # メソッドの前にappを付ける必要がでてくる
@@ -47,6 +48,7 @@ bp = Blueprint('app', __name__, url_prefix='')
 #     session['url'] = 'app.home'
 #     return render_template('home.html', friends=friends, requested_friends=requested_friends, connect_form=connect_form)
 
+
 @bp.route('/')
 def home():
     friends = requested_friends = requesting_friends = None
@@ -69,6 +71,7 @@ def logout():
     logout_user()
     return redirect(url_for('app.home'))
 
+
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     form = LoginForm(request.form)
@@ -88,6 +91,7 @@ def login():
         elif not user.validate_password(form.password.data):
             flash('メールアドレスとパスワードのCombが誤っています')
     return render_template('login.html', form=form)
+
 
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
@@ -109,6 +113,7 @@ def register():
         return redirect(url_for('app.login'))
     return render_template('register.html', form=form)
 
+
 @bp.route('/set_password/<uuid:token>', methods=['GET', 'POST'])
 def set_password(token):
     form = ResetPasswordForm(request.form)
@@ -126,6 +131,7 @@ def set_password(token):
         return redirect(url_for('app.login'))
     return render_template('set_password.html', form=form)
 
+
 @bp.route('/forgot_password', methods=['GET', 'POST'])
 def forgot_password():
     form = ForgotPasswordForm(request.form)
@@ -142,6 +148,7 @@ def forgot_password():
         else:
             flash('存在しないユーザです')
     return render_template('forgot_password.html', form=form)
+
 
 @bp.route('/user', methods=['GET', 'POST'])
 def user():
@@ -165,6 +172,7 @@ def user():
         flash('ユーザ情報の更新に成功しました')
     return render_template('user.html', form=form)
 
+
 @bp.route('/change_password', methods=['GET', 'POST'])
 @login_required
 def change_password():
@@ -179,18 +187,27 @@ def change_password():
         return redirect(url_for('app.user'))
     return render_template('change_password.html', form=form)
 
-@bp.route('/user_search', methods=['GET', 'POST'])
+
+@bp.route('/user_search', methods=['GET'])
 @login_required
 def user_search():
     form = UserSearchForm(request.form)
     connect_form = ConnectForm()
     session['url'] = 'app.user_search'
     users = None
-    if request.method == 'POST' and form.validate():
-        username = form.username.data
-        users = User.search_by_name(username)
+    user_name = request.args.get('username', None, type=str)
+    next_url = prev_url = None
+    if user_name:
+        page = request.args.get('page', 1, type=int)
+        # postsはflask_sqlalchemy.Paginationクラスを継承している
+        posts = User.search_by_name(user_name, page)
+        next_url = url_for('app.user_search', page=posts.next_num, username=user_name) if posts.has_next else None
+        prev_url = url_for('app.user_search', page=posts.prev_num, username=user_name) if posts.has_prev else None
+        users = posts.items
         # UserからUserConnectのStatusを取得する
-    return render_template('user_search.html', form=form, users=users, connect_form=connect_form)
+    return render_template('user_search.html', form=form, users=users, connect_form=connect_form,
+        next_url=next_url, prev_url=prev_url)
+
 
 @bp.route('/connect_user', methods=['POST'])
 @login_required
@@ -213,6 +230,7 @@ def connect_user():
     next_url = session.pop('url', 'app:home')
     return redirect(url_for(next_url))
 
+
 @bp.route('/delete_connect', methods=['POST'])
 @login_required
 def delete_connect():
@@ -234,6 +252,7 @@ def delete_connect():
     next_url = session.pop('url', 'app:home')
     return redirect(url_for(next_url))
 
+
 @bp.route('/message/<id>', methods=['GET', 'POST'])
 @login_required
 def message(id):
@@ -241,10 +260,22 @@ def message(id):
         """ Falseであればリダイレクト """
         return redirect(url_for('app.home'))
     form = MessageForm(request.form)
+    # 自分と相手のメッセージを取得
     messages = Message.get_friend_messages(current_user.get_id(), id)
     user = User.select_user_by_id(id)
     # 未読の相手のメッセージを取り出す
-    read_message_ids = [message.id for message in messages if (not message.is_read) and (message.from_user_id == int(id))]
+    read_message_ids = \
+                      [message.id for message in messages \
+                      if (not message.is_read) and (message.from_user_id == int(id))]
+    # すでに読まれている未読メッセージを既読化する
+    not_checked_message_ids = \
+                              [message.id for message in messages \
+                              if message.is_read and (not message.is_checked) \
+                              and (message.from_user_id == int(current_user.get_id())) ]
+    if not_checked_message_ids:
+        with db.session.begin(subtransactions=True):
+            Message.update_is_checked_by_ids(not_checked_message_ids)
+        db.session.commit()
     if read_message_ids:
         with db.session.begin(subtransactions=True):
             """ 相手のメッセージのis_readフラグを1にしてDBに格納 """
@@ -260,22 +291,49 @@ def message(id):
         form=form, messages=messages, to_user_id=id, user=user)
 
 
+@bp.route('/message_ajax', methods=['GET'])
+@login_required
+def message_ajax():
+    user_id = request.args.get('user_id', -1, type=int)
+    user = User.select_user_by_id(user_id)
+    not_read_messages = Message.select_not_read_messages(user_id, current_user.get_id())
+    # まだ読んでいない相手のメッセージをajaxで取得
+    not_read_message_ids = [message.id for message in not_read_messages]
+    if not_read_message_ids:
+        with db.session.begin(subtransactions=True):
+            Message.update_is_read_by_ids(not_read_message_ids)
+        db.session.commit()
+    # ajaxによってすでに読まれた自分のメッセージを既読化する
+    not_checked_messages = Message.select_not_checked_messages(current_user.get_id(), user_id)
+    not_checked_message_ids = [not_checked_message.id for not_checked_message in not_checked_messages]
+    if not_checked_message_ids:
+        with db.session.begin(subtransactions=True):
+            Message.update_is_checked_by_ids(not_checked_message_ids)
+        db.session.commit()
+    return jsonify(data=make_message_format(user, not_read_messages),
+        checked_message_ids=not_checked_message_ids)
 
 
-
+@bp.route('/load_old_messages', methods=['GET'])
+@login_required
+def load_old_messages():
+    user_id = request.args.get('user_id', -1, type=int)
+    offset_value = request.args.get('offset_value', -1, type=int)
+    if (user_id == -1) or (offset_value == -1):
+        return
+    messages = Message.get_friend_messages(current_user.get_id(), user_id, offset_value * 5)
+    user = User.select_user_by_id(user_id)
+    return jsonify(data=make_old_message_format(user, messages))
 
 
 # エラーハンドリング
-
 @bp.app_errorhandler(404)
 def page_not_found(e):
     """ 404Not Foundの時のエラーハンドリング """
     return redirect(url_for('app.home'))
 
+
 @bp.app_errorhandler(500)
 def server_error(e):
     """ 500Server Errorの時のエラーハンドリング """
     return render_template('http500.html'), 500
-
-
-
