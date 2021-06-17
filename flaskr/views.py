@@ -263,6 +263,7 @@ def message(id):
     # 自分と相手のメッセージを取得
     messages = Message.get_friend_messages(current_user.get_id(), id)
     user = User.select_user_by_id(id)
+
     # 未読の相手のメッセージを取り出す
     read_message_ids = \
                       [message.id for message in messages \
@@ -273,15 +274,18 @@ def message(id):
                               if message.is_read and (not message.is_checked) \
                               and (message.from_user_id == int(current_user.get_id())) ]
     if not_checked_message_ids:
+        """ 未読状態ですでに表示したもののis_checkedフラグを1にしてDBに格納 """
         with db.session.begin(subtransactions=True):
             Message.update_is_checked_by_ids(not_checked_message_ids)
         db.session.commit()
     if read_message_ids:
+        """ 相手のメッセージを表示するとis_readフラグを1にしてDBに格納 """
         with db.session.begin(subtransactions=True):
-            """ 相手のメッセージのis_readフラグを1にしてDBに格納 """
             Message.update_is_read_by_ids(read_message_ids)
         db.session.commit()
+
     if request.method == 'POST' and form.validate():
+        """ message.htmlから送られたメッセージをDBに格納 """
         new_message = Message(current_user.get_id(), id, form.message.data)
         with db.session.begin(subtransactions=True):
             new_message.create_message()
