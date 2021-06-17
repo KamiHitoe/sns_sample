@@ -13,61 +13,80 @@
             scroll.scrollTop = scroll.scrollHeight;
         });
         user_id = "{{to_user_id}}";
+        offset_value = 1;
         function get_new_messages(){
             // 定期実行する関数を定義
             // views.pyの/message_ajaxと対応
             $.getJSON("/message_ajax", {
                 user_id: user_id
             }, function(data){
-                $('#message-form').before(data['data'])
+                $('#message-form').before(data['data']);
+                var checked_message_ids = data['checked_message_ids'];
+                for(let idx = 0; idx < checked_message_ids.length; idx++){
+                    $('#self-message-tag-' + checked_message_ids[idx]).append('<p>既読</p>');
+                }
+            });
+        };
+        function load_old_messages(){
+            $.getJSON("/load_old_messages", {
+                user_id: user_id,
+                offset_value: offset_value
+            }, function(data){
+                if(data['data']){
+                    hidden_id = "load_message_" + offset_value;
+                    hidden_tag = '<div id="' + hidden_id + '"></div>';
+                    $(hidden_tag).insertAfter('#load_message_button');
+                    $(data['data']).insertAfter('#load_message_button');
+                    $('body, html').animate({scrollTop: $("#" + hidden_id).offset().top}, 0);
+                    offset_value += 1;
+                }
             });
         };
     </script>
 <!-- BootstrapのGridSystemは横幅合計を12にする必要がある -->
-    {% for message in messages %}
     <div class="row">
-        {% if message.from_user_id == current_user.id %}
-        <!-- 自分側 -->
-        <div class="col-md-2">
-            {% if current_user.picture_path %}
-            <img class="user-image-mini" src="{{url_for('static', filename=current_user.picture_path)}}">
+        <div id="load_message_button" class="col-12">
+            <button class="col-12 btn btn-light btn-outline-primary" onclick="load_old_messages();">追加でメッセージを読み込む</button>
+        </div>
+        {% for message in messages|reverse %}
+            {% if message.from_user_id == current_user.id %}
+            <!-- 自分側 -->
+            <div class="col-md-2">
+                {% if current_user.picture_path %}
+                <img class="user-image-mini" src="{{url_for('static', filename=current_user.picture_path)}}">
+                {% endif %}
+                <p>{{current_user.username}}</p>
+            </div>
+            <div class="speech-bubble-self col-md-4">
+                {% for splitted_message in message.message | replace_newline %}
+                <p>{{splitted_message | urlize(target=true)}}</p>
+                {% endfor %}
+                <p>{{message.create_at.strftime("%H:%M")}}</p>
+            </div>
+            <div id="self-message-tag-{{message.id}}" class="col-md-2">
+                {% if message.is_checked %}
+                <p>既読</p>
+                {% endif %}
+            </div>
+            <div class="col-md-4"></div>
+            {% else %}
+            <!-- 相手側 -->
+            <div class="col-md-6"></div>
+            <div class="speech-bubble-dest col-md-4">
+                {% for splitted_message in message.message | replace_newline %}
+                <p>{{splitted_message | urlize(target=true)}}</p>
+                {% endfor %}
+                <p>{{message.create_at.strftime("%H:%M")}}</p>
+            </div>
+            <div class="col-md-2">
+                {% if user.picture_path %}
+                <img class="user-image-mini" src="{{url_for('static', filename=user.picture_path)}}">
+                {% endif %}
+                <p>{{user.username}}</p>
+            </div>
             {% endif %}
-            <p>{{current_user.username}}</p>
-        </div>
-        <div class="speech-bubble-self col-md-4">
-            {% for splitted_message in message.message | replace_newline %}
-            <p>{{splitted_message | urlize(target=true)}}</p>
-            {% endfor %}
-            <p>{{message.create_at.strftime("%H:%M")}}</p>
-        </div>
-        <div class="col-md-2">
-            {% if message.is_read %}
-            <p>既読</p>
-            {% endif %}
-        </div>
-        <div class="col-md-4"></div>
-        {% else %}
-        <!-- 相手側 -->
-        <div class="col-md-6"></div>
-        <div class="speech-bubble-dest col-md-4">
-            {% for splitted_message in message.message | replace_newline %}
-            <p>{{splitted_message | urlize(target=true)}}</p>
-            {% endfor %}
-            <p>{{message.create_at.strftime("%H:%M")}}</p>
-        </div>
-        <div class="col-md-2">
-            {% if user.picture_path %}
-            <img class="user-image-mini" src="{{url_for('static', filename=user.picture_path)}}">
-            {% endif %}
-            <p>{{user.username}}</p>
-        </div>
-        {% endif %}
-        <br>
-        <hr>
-    </div>
-    {% endfor %}
+        {% endfor %}
 
-    <div class="row">
         <div id="message-form" class="col-md-4">
             <form method="POST">
                 {{form.csrf_token}}

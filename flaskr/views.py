@@ -12,7 +12,7 @@ from flaskr.forms import (
     UserForm, ChangePasswordForm, UserSearchForm, ConnectForm, MessageForm,
 
 )
-from flaskr.utils.message_format import make_message_format
+from flaskr.utils.message_format import make_message_format, make_old_message_format
 from os import path
 
 # メソッドの前にappを付ける必要がでてくる
@@ -188,18 +188,25 @@ def change_password():
     return render_template('change_password.html', form=form)
 
 
-@bp.route('/user_search', methods=['GET', 'POST'])
+@bp.route('/user_search', methods=['GET'])
 @login_required
 def user_search():
     form = UserSearchForm(request.form)
     connect_form = ConnectForm()
     session['url'] = 'app.user_search'
     users = None
-    if request.method == 'POST' and form.validate():
-        username = form.username.data
-        users = User.search_by_name(username)
+    user_name = request.args.get('username', None, type=str)
+    next_url = prev_url = None
+    if user_name:
+        page = request.args.get('page', 1, type=int)
+        # postsはflask_sqlalchemy.Paginationクラスを継承している
+        posts = User.search_by_name(user_name, page)
+        next_url = url_for('app.user_search', page=posts.next_num, username=user_name) if posts.has_next else None
+        prev_url = url_for('app.user_search', page=posts.prev_num, username=user_name) if posts.has_prev else None
+        users = posts.items
         # UserからUserConnectのStatusを取得する
-    return render_template('user_search.html', form=form, users=users, connect_form=connect_form)
+    return render_template('user_search.html', form=form, users=users, connect_form=connect_form,
+        next_url=next_url, prev_url=prev_url)
 
 
 @bp.route('/connect_user', methods=['POST'])
@@ -253,10 +260,22 @@ def message(id):
         """ Falseであればリダイレクト """
         return redirect(url_for('app.home'))
     form = MessageForm(request.form)
+    # 自分と相手のメッセージを取得
     messages = Message.get_friend_messages(current_user.get_id(), id)
     user = User.select_user_by_id(id)
     # 未読の相手のメッセージを取り出す
-    read_message_ids = [message.id for message in messages if (not message.is_read) and (message.from_user_id == int(id))]
+    read_message_ids = \
+                      [message.id for message in messages \
+                      if (not message.is_read) and (message.from_user_id == int(id))]
+    # すでに読まれている未読メッセージを既読化する
+    not_checked_message_ids = \
+                              [message.id for message in messages \
+                              if message.is_read and (not message.is_checked) \
+                              and (message.from_user_id == int(current_user.get_id())) ]
+    if not_checked_message_ids:
+        with db.session.begin(subtransactions=True):
+            Message.update_is_checked_by_ids(not_checked_message_ids)
+        db.session.commit()
     if read_message_ids:
         with db.session.begin(subtransactions=True):
             """ 相手のメッセージのis_readフラグを1にしてDBに格納 """
@@ -278,13 +297,33 @@ def message_ajax():
     user_id = request.args.get('user_id', -1, type=int)
     user = User.select_user_by_id(user_id)
     not_read_messages = Message.select_not_read_messages(user_id, current_user.get_id())
-    # ajaxで取得したメッセージも既読にする
+    # まだ読んでいない相手のメッセージをajaxで取得
     not_read_message_ids = [message.id for message in not_read_messages]
     if not_read_message_ids:
         with db.session.begin(subtransactions=True):
             Message.update_is_read_by_ids(not_read_message_ids)
         db.session.commit()
-    return jsonify(data=make_message_format(user, not_read_messages))
+    # ajaxによってすでに読まれた自分のメッセージを既読化する
+    not_checked_messages = Message.select_not_checked_messages(current_user.get_id(), user_id)
+    not_checked_message_ids = [not_checked_message.id for not_checked_message in not_checked_messages]
+    if not_checked_message_ids:
+        with db.session.begin(subtransactions=True):
+            Message.update_is_checked_by_ids(not_checked_message_ids)
+        db.session.commit()
+    return jsonify(data=make_message_format(user, not_read_messages),
+        checked_message_ids=not_checked_message_ids)
+
+
+@bp.route('/load_old_messages', methods=['GET'])
+@login_required
+def load_old_messages():
+    user_id = request.args.get('user_id', -1, type=int)
+    offset_value = request.args.get('offset_value', -1, type=int)
+    if (user_id == -1) or (offset_value == -1):
+        return
+    messages = Message.get_friend_messages(current_user.get_id(), user_id, offset_value * 5)
+    user = User.select_user_by_id(user_id)
+    return jsonify(data=make_old_message_format(user, messages))
 
 
 # エラーハンドリング
