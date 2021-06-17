@@ -8,23 +8,25 @@ from sqlalchemy.orm import aliased
 from sqlalchemy import and_, or_
 
 from datetime import datetime, timedelta
-from uuid import uuid4 # passwordを発行する時に便利
+from uuid import uuid4  # passwordを発行する時に便利
+
 
 @login_manager.user_loader
 def load_user(user_id):
     """ user_idに対して、Userインスタンスを返す """
     return User.query.get(user_id)
 
+
 class User(UserMixin, db.Model):
     """ ユーザログイン機能を付加 """
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(64), index=True) # 検索性があるものはindex付けとく
+    username = db.Column(db.String(64), index=True)  # 検索性があるものはindex付けとく
     email = db.Column(db.String(64), unique=True, index=True)
     password = db.Column(
-        db.String(128),
-        default=generate_password_hash('something'),
-        ) # passwordに初期値を設ける
+                        db.String(128),
+                        default=generate_password_hash('something'),
+                        )  # passwordに初期値を設ける
     picture_path = db.Column(db.Text, nullable=True)
     # 有効か無効かのフラグ
     is_active = db.Column(db.Boolean, unique=False, default=False)
@@ -159,6 +161,7 @@ class User(UserMixin, db.Model):
     #             friends_connect2.from_user_id.label('friends_from_to'), # 相手→自分
     #         ).all()
 
+
 class PasswordResetToken(db.Model):
     __tablename__ = 'password_reset_tokens'
     id = db.Column(db.Integer, primary_key=True)
@@ -198,6 +201,7 @@ class PasswordResetToken(db.Model):
         db.session.add(new_token)
         return token
 
+
 class UserConnect(db.Model):
     __tablename__ = 'user_connects'
     id = db.Column(db.Integer, primary_key=True)
@@ -214,7 +218,6 @@ class UserConnect(db.Model):
 
     def create_new_connect(self):
         db.session.add(self)
-
 
     def update_status(self):
         self.status = 2
@@ -301,5 +304,12 @@ class Message(db.Model):
             synchronize_session='fetch'
         )
 
-
-
+    @classmethod
+    def select_not_read_messages(cls, from_user_id, to_user_id):
+        return cls.query.filter(
+            and_(
+                cls.from_user_id == from_user_id,
+                cls.to_user_id == to_user_id,
+                cls.is_read == 0
+            )
+        ).order_by(cls.id).all()

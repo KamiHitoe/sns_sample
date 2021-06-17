@@ -4,6 +4,25 @@
 メッセージ画面 - {{super()}}
 {% endblock %}
 {% block content %}
+    <script>
+        // Ajaxで5秒間隔でメッセージをサーバから取得する
+        $(function(){
+            timer = setInterval("get_new_messages()", 5000);
+            // 初期表示で画面の一番下にいく
+            var scroll = (document.scrollingElement || document.body);
+            scroll.scrollTop = scroll.scrollHeight;
+        });
+        user_id = "{{to_user_id}}";
+        function get_new_messages(){
+            // 定期実行する関数を定義
+            // views.pyの/message_ajaxと対応
+            $.getJSON("/message_ajax", {
+                user_id: user_id
+            }, function(data){
+                $('#message-form').before(data['data'])
+            });
+        };
+    </script>
 <!-- BootstrapのGridSystemは横幅合計を12にする必要がある -->
     {% for message in messages %}
     <div class="row">
@@ -49,7 +68,7 @@
     {% endfor %}
 
     <div class="row">
-        <div class="col-md-4">
+        <div id="message-form" class="col-md-4">
             <form method="POST">
                 {{form.csrf_token}}
                 {{form.to_user_id(value=to_user_id)}}

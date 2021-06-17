@@ -2,7 +2,7 @@
 from datetime import datetime
 from flask import (
     Blueprint, abort, request, render_template,
-    redirect, url_for, flash, session, 
+    redirect, url_for, flash, session, jsonify, 
 )
 from flask_login import login_user, logout_user, login_required, current_user
 from flaskr.models import User, PasswordResetToken, UserConnect, Message
@@ -12,6 +12,7 @@ from flaskr.forms import (
     UserForm, ChangePasswordForm, UserSearchForm, ConnectForm, MessageForm,
 
 )
+from flaskr.utils.message_format import make_message_format
 from os import path
 
 # メソッドの前にappを付ける必要がでてくる
@@ -47,6 +48,7 @@ bp = Blueprint('app', __name__, url_prefix='')
 #     session['url'] = 'app.home'
 #     return render_template('home.html', friends=friends, requested_friends=requested_friends, connect_form=connect_form)
 
+
 @bp.route('/')
 def home():
     friends = requested_friends = requesting_friends = None
@@ -69,6 +71,7 @@ def logout():
     logout_user()
     return redirect(url_for('app.home'))
 
+
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     form = LoginForm(request.form)
@@ -88,6 +91,7 @@ def login():
         elif not user.validate_password(form.password.data):
             flash('メールアドレスとパスワードのCombが誤っています')
     return render_template('login.html', form=form)
+
 
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
@@ -109,6 +113,7 @@ def register():
         return redirect(url_for('app.login'))
     return render_template('register.html', form=form)
 
+
 @bp.route('/set_password/<uuid:token>', methods=['GET', 'POST'])
 def set_password(token):
     form = ResetPasswordForm(request.form)
@@ -126,6 +131,7 @@ def set_password(token):
         return redirect(url_for('app.login'))
     return render_template('set_password.html', form=form)
 
+
 @bp.route('/forgot_password', methods=['GET', 'POST'])
 def forgot_password():
     form = ForgotPasswordForm(request.form)
@@ -142,6 +148,7 @@ def forgot_password():
         else:
             flash('存在しないユーザです')
     return render_template('forgot_password.html', form=form)
+
 
 @bp.route('/user', methods=['GET', 'POST'])
 def user():
@@ -165,6 +172,7 @@ def user():
         flash('ユーザ情報の更新に成功しました')
     return render_template('user.html', form=form)
 
+
 @bp.route('/change_password', methods=['GET', 'POST'])
 @login_required
 def change_password():
@@ -179,6 +187,7 @@ def change_password():
         return redirect(url_for('app.user'))
     return render_template('change_password.html', form=form)
 
+
 @bp.route('/user_search', methods=['GET', 'POST'])
 @login_required
 def user_search():
@@ -191,6 +200,7 @@ def user_search():
         users = User.search_by_name(username)
         # UserからUserConnectのStatusを取得する
     return render_template('user_search.html', form=form, users=users, connect_form=connect_form)
+
 
 @bp.route('/connect_user', methods=['POST'])
 @login_required
@@ -213,6 +223,7 @@ def connect_user():
     next_url = session.pop('url', 'app:home')
     return redirect(url_for(next_url))
 
+
 @bp.route('/delete_connect', methods=['POST'])
 @login_required
 def delete_connect():
@@ -233,6 +244,7 @@ def delete_connect():
     # user_searchから取得したsessionを利用する
     next_url = session.pop('url', 'app:home')
     return redirect(url_for(next_url))
+
 
 @bp.route('/message/<id>', methods=['GET', 'POST'])
 @login_required
@@ -260,22 +272,29 @@ def message(id):
         form=form, messages=messages, to_user_id=id, user=user)
 
 
-
-
-
+@bp.route('/message_ajax', methods=['GET'])
+@login_required
+def message_ajax():
+    user_id = request.args.get('user_id', -1, type=int)
+    user = User.select_user_by_id(user_id)
+    not_read_messages = Message.select_not_read_messages(user_id, current_user.get_id())
+    # ajaxで取得したメッセージも既読にする
+    not_read_message_ids = [message.id for message in not_read_messages]
+    if not_read_message_ids:
+        with db.session.begin(subtransactions=True):
+            Message.update_is_read_by_ids(not_read_message_ids)
+        db.session.commit()
+    return jsonify(data=make_message_format(user, not_read_messages))
 
 
 # エラーハンドリング
-
 @bp.app_errorhandler(404)
 def page_not_found(e):
     """ 404Not Foundの時のエラーハンドリング """
     return redirect(url_for('app.home'))
 
+
 @bp.app_errorhandler(500)
 def server_error(e):
     """ 500Server Errorの時のエラーハンドリング """
     return render_template('http500.html'), 500
-
-
-

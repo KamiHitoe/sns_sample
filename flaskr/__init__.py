@@ -16,6 +16,7 @@ login_manager.login_message = 'ログインしてくださいね～'
 db = SQLAlchemy()
 migrate = Migrate()
 
+
 def create_app():
     """ appの生成から設定を行う """
     app = Flask(__name__)
@@ -32,4 +33,3 @@ def create_app():
     migrate.init_app(app, db)
     login_manager.init_app(app)
     return app
-
